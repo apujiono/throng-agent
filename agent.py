@@ -18,7 +18,7 @@ import os
 AGENT_ID = str(uuid.uuid4())
 MQTT_BROKER = os.getenv("MQTT_BROKER", "5374fec8494a4a24add8bb27fe4ddae5.s1.eu.hivemq.cloud:8883")
 MQTT_USERNAME = os.getenv("MQTT_USERNAME", "throng_user")
-MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "ThrongPass123")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "ThrongPass123!")
 TOPIC_REPORTS = "throng/reports"
 TOPIC_COMMANDS = f"throng/commands/{AGENT_ID}"
 TOPIC_PEER = "throng/peer"
@@ -275,6 +275,16 @@ def log_action(action, target, emergency=False, details=""):
     with open("agent_log.txt", "a") as f:
         f.write(f"{datetime.now().isoformat()} | Action: {action} | Target: {target} | Emergency: {emergency} | Details: {details}\n")
 
+def publish_with_retry(topic, payload, retries=3):
+    for i in range(retries):
+        try:
+            client.publish(topic, json.dumps(payload))
+            return
+        except Exception as e:
+            print(f"Publish failed: {e}, retry {i+1}/{retries}")
+            time.sleep(2 ** i)  # Exponential backoff
+    print(f"Failed to publish after {retries} retries")
+
 # Inisialisasi MQTT client
 client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
 client.on_connect = on_connect
@@ -293,6 +303,6 @@ while True:
         "agent_id": AGENT_ID,
         "data": collect_data()
     }
-    client.publish(TOPIC_REPORTS, json.dumps(report))
+    publish_with_retry(TOPIC_REPORTS, report)
     print(f"Agent {AGENT_ID} sent report: {report}")
     time.sleep(60)
