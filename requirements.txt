@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+paho-mqtt
+psutil
+paramiko
+python-nmap
+pyjwt
+scikit-learn
+numpy>=1.21.6
+jinja2
+requests
