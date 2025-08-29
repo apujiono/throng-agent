@@ -14,7 +14,7 @@ import threading
 from urllib.parse import urlparse
 import os
 
-# Konfigurasi agent
+# Konfigurasi agent dari variabel lingkungan dengan default
 AGENT_ID = str(uuid.uuid4())
 MQTT_BROKER = os.getenv("MQTT_BROKER", "5374fec8494a4a24add8bb27fe4ddae5.s1.eu.hivemq.cloud:8883")
 MQTT_USERNAME = os.getenv("MQTT_USERNAME", "throng_user")
