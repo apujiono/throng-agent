@@ -41,9 +41,9 @@ def on_message(client, userdata, msg):
         target = command.get("target")
         params = command.get("params", {})
         emergency = command.get("emergency", False)
-
+        
         print(f"Received command: {action} on {target} (Emergency: {emergency})")
-
+        
         if action == "block_ip":
             block_ip(target, emergency)
         elif action == "send_honeypot":
