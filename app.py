@@ -275,6 +275,16 @@ def log_action(action, target, emergency=False, details=""):
     with open("agent_log.txt", "a") as f:
         f.write(f"{datetime.now().isoformat()} | Action: {action} | Target: {target} | Emergency: {emergency} | Details: {details}\n")
 
+def publish_with_retry(topic, payload, retries=3):
+    for i in range(retries):
+        try:
+            client.publish(topic, json.dumps(payload))
+            return
+        except Exception as e:
+            print(f"Publish failed: {e}, retry {i+1}/{retries}")
+            time.sleep(2 ** i)  # Exponential backoff
+    print(f"Failed to publish after {retries} retries")
+
 # Inisialisasi MQTT client
 client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
 client.on_connect = on_connect
@@ -293,6 +303,6 @@ while True:
         "agent_id": AGENT_ID,
         "data": collect_data()
     }
-    client.publish(TOPIC_REPORTS, json.dumps(report))
+    publish_with_retry(TOPIC_REPORTS, report)
     print(f"Agent {AGENT_ID} sent report: {report}")
     time.sleep(60)
